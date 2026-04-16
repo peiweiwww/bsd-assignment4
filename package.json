@@ -8,8 +8,11 @@
     "node": ">=20"
   },
   "scripts": {
+    "build:shared": "npm run build --workspace=packages/shared",
+    "predev:worker": "npm run build:shared",
     "dev:worker": "npm run dev --workspace=apps/worker",
     "dev:web": "npm run dev --workspace=apps/web",
+    "prebuild:worker": "npm run build:shared",
     "build:worker": "npm run build --workspace=apps/worker",
     "build:web": "npm run build --workspace=apps/web"
   }
