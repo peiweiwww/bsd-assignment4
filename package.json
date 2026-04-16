@@ -14,6 +14,8 @@
     "dev:web": "npm run dev --workspace=apps/web",
     "prebuild:worker": "npm run build:shared",
     "build:worker": "npm run build --workspace=apps/worker",
-    "build:web": "npm run build --workspace=apps/web"
+    "prebuild:web": "npm run build:shared",
+    "build:web": "npm run build --workspace=apps/web",
+    "predev:web": "npm run build:shared"
   }
 }
