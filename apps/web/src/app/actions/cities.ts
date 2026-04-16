@@ -36,7 +36,11 @@ export async function addCity(formData: FormData): Promise<void> {
 
   let geoData: GeocodeResponse
   try {
-    const res = await fetch(geocodeUrl)
+    const res = await fetch(geocodeUrl, {
+      headers: {
+        'User-Agent': 'weather-dashboard/1.0 (https://github.com/peiweiwww/bsd-assignment4)',
+      },
+    })
     if (!res.ok) throw new Error(`Geocoding request failed: HTTP ${res.status}`)
     geoData = (await res.json()) as GeocodeResponse
   } catch {

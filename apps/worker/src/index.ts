@@ -42,7 +42,19 @@ async function fetchCurrentWeather(lat: number, lon: number): Promise<WeatherSna
     `?latitude=${lat}&longitude=${lon}` +
     `&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code`;
 
-  const res = await fetch(url);
+  const headers = {
+    'User-Agent': 'weather-dashboard/1.0 (https://github.com/peiweiwww/bsd-assignment4)',
+  };
+
+  let res = await fetch(url, { headers });
+
+  if (res.status === 429) {
+    const retryAfterSec = parseInt(res.headers.get('retry-after') ?? '60', 10);
+    console.warn(`[worker] Open-Meteo 429 for (${lat}, ${lon}). Retrying in ${retryAfterSec}s…`);
+    await new Promise((r) => setTimeout(r, retryAfterSec * 1000));
+    res = await fetch(url, { headers });
+  }
+
   if (!res.ok) {
     throw new Error(
       `Open-Meteo request failed for (${lat}, ${lon}): HTTP ${res.status}`
