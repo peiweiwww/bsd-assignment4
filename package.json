@@ -1,0 +1,16 @@
+{
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev:worker": "npm run dev --workspace=apps/worker",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "build:worker": "npm run build --workspace=apps/worker",
+    "build:web": "npm run build --workspace=apps/web"
+  }
+}
