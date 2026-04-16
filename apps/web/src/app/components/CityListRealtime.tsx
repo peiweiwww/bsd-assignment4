@@ -37,13 +37,25 @@ export default function CityListRealtime({ cities, initialReadings }: Props) {
 
   // ── Realtime subscription ──────────────────────────────────────────────────
   useEffect(() => {
-    let supabase: ReturnType<typeof createBrowserSupabaseClient>
+    // cancelled flag prevents async work completing after cleanup
+    let cancelled = false
+    let client: ReturnType<typeof createBrowserSupabaseClient> | null = null
+    let channel: ReturnType<ReturnType<typeof createBrowserSupabaseClient>['channel']> | null = null
 
     async function subscribe() {
       const token = await getToken()
-      supabase = createBrowserSupabaseClient(token)
+      if (cancelled) return
 
-      const channel = supabase
+      client = createBrowserSupabaseClient(token)
+
+      // Realtime WebSocket auth is separate from the REST Authorization header.
+      // Without setAuth(), Supabase silently rejects the channel join.
+      if (token) {
+        await client.realtime.setAuth(token)
+      }
+      if (cancelled) return
+
+      channel = client
         .channel('weather-readings-changes')
         .on(
           'postgres_changes',
@@ -62,23 +74,20 @@ export default function CityListRealtime({ cities, initialReadings }: Props) {
             })
           }
         )
-        .subscribe()
-
-      return channel
+        .subscribe((_status) => {
+          // status logged during development; remove callback if not needed
+        })
     }
 
-    let channelRef: Awaited<ReturnType<typeof subscribe>> | undefined
-
-    subscribe().then((ch) => {
-      channelRef = ch
-    })
+    subscribe()
 
     return () => {
-      if (channelRef && supabase) {
-        supabase.removeChannel(channelRef)
+      cancelled = true
+      if (channel && client) {
+        client.removeChannel(channel)
       }
     }
-  }, [getToken])
+  }, []) // subscribe once on mount — getToken is captured from the initial closure
 
   // ── Minute ticker — keeps relative timestamps fresh ────────────────────────
   useEffect(() => {

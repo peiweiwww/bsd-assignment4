@@ -88,3 +88,32 @@ Copy `apps/web/.env.local.example` → `apps/web/.env.local` and fill in real va
 | **Vercel** | `apps/web` — Next.js frontend with serverless functions |
 | **Supabase** | Managed Postgres database + Realtime subscriptions |
 | **Clerk** | Authentication and user management |
+
+### Worker (Railway)
+
+1. Log in to [Railway](https://railway.app) → **New Project** → **Deploy from GitHub repo**.
+2. Select this repository.
+3. **Settings → Root Directory**: set to `apps/worker`.
+4. **Settings → Environment Variables** — add:
+   - `SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `POLL_INTERVAL_MS` (recommended: `300000`)
+5. **Settings → Build Command**: `npm install && npm run build`
+6. **Settings → Start Command**: `npm run start`
+7. Click **Deploy**. In the **Logs** tab you should see `[worker] Starting.` followed by `[poll]` lines every 5 minutes.
+
+### Web (Vercel)
+
+1. Log in to [Vercel](https://vercel.com) → **Add New → Project** → **Import from GitHub**.
+2. Select this repository.
+3. **Framework Preset**: Next.js (auto-detected).
+4. **Root Directory**: leave as the repository root (the `vercel.json` at the root handles the monorepo build).
+5. **Environment Variables** — add:
+   - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+   - `CLERK_SECRET_KEY`
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+6. Click **Deploy**.
+7. Once deployed, copy the production URL (e.g. `https://your-app.vercel.app`) and:
+   - **Clerk Dashboard → Domains**: add the Vercel URL to allowed origins.
+   - **Supabase Dashboard → Authentication → URL Configuration**: add the Vercel URL to the allowed redirect URLs.
