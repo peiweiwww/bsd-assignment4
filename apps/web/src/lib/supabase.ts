@@ -12,6 +12,8 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 
 /**
  * Server-side Supabase client authenticated with the current Clerk session JWT.
+ * Import this only in Server Components, Server Actions, or Route Handlers.
+ *
  * The JWT is passed as Authorization: Bearer <token> so Supabase RLS can read
  * auth.jwt() ->> 'sub' to enforce per-user row access.
  *

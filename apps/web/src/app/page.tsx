@@ -1,8 +1,9 @@
 import { auth } from '@clerk/nextjs/server'
 import { SignInButton } from '@clerk/nextjs'
 import { getMyCities } from '@/app/actions/cities'
+import { getLatestReadings } from '@/app/actions/readings'
 import AddCityForm from '@/app/components/AddCityForm'
-import DeleteCityButton from '@/app/components/DeleteCityButton'
+import CityListRealtime from '@/app/components/CityListRealtime'
 
 // Auth-dependent page — never statically prerender.
 export const dynamic = 'force-dynamic'
@@ -31,6 +32,7 @@ export default async function Home() {
 
   // ── Signed in ─────────────────────────────────────────────────────────────
   const cities = await getMyCities()
+  const initialReadings = await getLatestReadings(cities.map((c) => c.id))
 
   return (
     <main className="max-w-2xl mx-auto p-6">
@@ -38,30 +40,7 @@ export default async function Home() {
 
       <AddCityForm />
 
-      {cities.length === 0 ? (
-        <p className="text-gray-400 text-sm text-center py-10">
-          No cities yet. Add one above.
-        </p>
-      ) : (
-        <ul className="space-y-3">
-          {cities.map((city) => (
-            <li
-              key={city.id}
-              className="flex items-center justify-between border border-gray-200
-                         rounded-lg p-4 bg-white hover:border-gray-300 hover:shadow-sm
-                         transition-all"
-            >
-              <div>
-                <p className="font-medium text-gray-800">{city.name}</p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {city.latitude.toFixed(4)}, {city.longitude.toFixed(4)}
-                </p>
-              </div>
-              <DeleteCityButton cityId={city.id} />
-            </li>
-          ))}
-        </ul>
-      )}
+      <CityListRealtime cities={cities} initialReadings={initialReadings} />
     </main>
   )
 }
