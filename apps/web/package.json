@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^6.12.6",
+    "@supabase/supabase-js": "^2.103.3",
     "@weather/shared": "*",
     "next": "^15.3.1",
     "react": "^19",
