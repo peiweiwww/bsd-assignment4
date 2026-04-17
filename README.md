@@ -1,119 +1,113 @@
 # Weather Dashboard
 
-A real-time weather dashboard built as a monorepo with a Node.js worker, Supabase for storage and realtime, and a Next.js frontend with Clerk authentication.
+A real-time weather app where users add their favorite cities and see live conditions — temperature, humidity, wind, and weather state — updated automatically without refreshing the page. Each user has their own city list; weather data is shared across users and pushed to all connected browsers the moment the worker writes a new reading.
+
+**Live demo:** https://bsd-assignment4-web.vercel.app  
+**Stack:** Next.js 15 · Clerk · Supabase · Railway · Vercel · Open-Meteo
+
+---
 
 ## Architecture
 
 ```
 Open-Meteo API
-      │
-      ▼
-Node.js Worker (Railway)
-      │  polls weather data, writes to Supabase
-      ▼
-Supabase (Postgres + Realtime)
-      │  stores cities & weather readings
-      │  pushes realtime updates
-      ▼
-Next.js Frontend (Vercel)
-      │  reads data, subscribes to realtime
-      ▼
-User (Clerk auth)
+     ↓  (worker polls every 5 min + immediately on new city add)
+Node worker (Railway)
+     ↓  (INSERT into weather_readings via service_role)
+Supabase Postgres ──► Realtime broadcast
+     ↑                       ↓
+RLS (user-scoped cities)  WebSocket
+                               ↓
+                       Next.js on Vercel
+                               ↕  Clerk auth (JWT → RLS sub claim)
 ```
 
-- **Open-Meteo**: free, no-API-key weather source
-- **Worker**: fetches weather for each tracked city on a schedule, upserts readings into Supabase
-- **Supabase**: `cities` table (user-specific), `weather_readings` table (shared across users)
-- **Next.js**: displays dashboard; Supabase Realtime pushes live updates
-- **Clerk**: handles authentication; `user_id` scopes each user's city list
+The worker runs independently of the frontend — it polls on a fixed schedule regardless of how many users are online, keeping Supabase as the single source of truth. Supabase Realtime broadcasts every new `weather_readings` INSERT over a WebSocket so browsers update instantly without polling. Row-Level Security enforces that each user can only read and write their own `cities` rows, even though the entire app shares one database.
+
+---
+
+## Features
+
+- Add and remove cities (geocoded via Open-Meteo's free geocoding API)
+- Live temperature, humidity, wind speed, and weather condition with WMO-code emoji
+- Real-time updates via Supabase Realtime — no page refresh needed
+- °C / °F toggle with localStorage persistence
+- Per-user data scoping via Clerk JWT + Supabase RLS
+- Immediate first reading on city add — no waiting up to 5 min for the next poll
+
+---
+
+## Repo Structure
+
+```
+apps/
+  web/        Next.js 15 frontend (App Router, Server Actions, Clerk)
+  worker/     Node.js polling service (TypeScript, compiled to dist/)
+packages/
+  shared/     Shared TypeScript types + WMO weather code → label mapping
+supabase/
+  migrations/ SQL: cities table, weather_readings, RLS policies, Realtime
+```
+
+---
 
 ## Local Development
 
+**1. Clone and install**
+
 ```bash
-# Install all workspace dependencies from the repo root
+git clone https://github.com/peiweiwww/bsd-assignment4
+cd bsd-assignment4/weather-dashboard
 npm install
-
-# Start the worker in watch mode
-npm run dev:worker
-
-# Start the Next.js frontend (once scaffolded)
-npm run dev:web
 ```
 
-## Environment Variables
+**2. Set up Supabase**
 
-### Worker (`apps/worker/.env`)
+- Create a project at [supabase.com](https://supabase.com)
+- Run `supabase/migrations/0001_init.sql` in Dashboard → SQL Editor
+- Verify `weather_readings` appears in Database → Publications → `supabase_realtime`
+- Go to Authentication → Third-Party Auth and add Clerk as a JWT provider (supply your Clerk JWKS URL)
 
-Copy `apps/worker/.env.example` → `apps/worker/.env` and fill in real values.
+**3. Set up Clerk**
 
-| Variable | Description |
-|---|---|
-| `SUPABASE_URL` | Your Supabase project URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service role key — bypasses RLS for server-side writes |
-| `POLL_INTERVAL_MS` | How often to poll Open-Meteo (default: 300000 = 5 min) |
+- Create an application at [clerk.com](https://clerk.com)
+- In Clerk Dashboard → Integrations, connect Supabase
 
-### Web (`apps/web/.env.local`)
+**4. Environment variables**
 
-Copy `apps/web/.env.local.example` → `apps/web/.env.local` and fill in real values.
+`apps/web/.env.local`:
+```
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=...
+CLERK_SECRET_KEY=...
+```
 
-| Variable | Description |
-|---|---|
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (from Clerk Dashboard → API Keys) |
-| `CLERK_SECRET_KEY` | Clerk secret key — server-side only |
-| `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL (public) |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key for client-side access |
+`apps/worker/.env`:
+```
+SUPABASE_URL=...
+SUPABASE_SERVICE_ROLE_KEY=...
+POLL_INTERVAL_MS=300000
+```
 
-## Third-party Setup
+**5. Run**
 
-### Supabase
+```bash
+# Build shared types first (required before worker can run)
+npm run build:shared
 
-1. Run `supabase/migrations/0001_init.sql` in Dashboard → SQL Editor.
-2. Go to **Authentication → Third-party Auth** and add Clerk as a JWT provider
-   (supply your Clerk JWKS URL from Clerk Dashboard → API Keys → Advanced).
-3. Confirm `weather_readings` is in the `supabase_realtime` publication
-   (Database → Publications).
+# Frontend on :3000
+npm run dev:web
 
-### Clerk
+# Worker polling loop (separate terminal)
+npm run dev:worker
+```
 
-1. Create a Clerk application at [clerk.com](https://clerk.com).
-2. Copy the publishable key and secret key into `apps/web/.env.local`.
-3. Enable the **Supabase** integration in Clerk Dashboard → Integrations
-   so that Clerk issues JWTs accepted by Supabase RLS policies.
+---
 
 ## Deployment
 
-| Service | What it runs |
-|---|---|
-| **Railway** | `apps/worker` — long-running Node.js process that polls Open-Meteo |
-| **Vercel** | `apps/web` — Next.js frontend with serverless functions |
-| **Supabase** | Managed Postgres database + Realtime subscriptions |
-| **Clerk** | Authentication and user management |
+**Frontend (Vercel):** Import the repo, set Root Directory to the repository root (not `apps/web` — `vercel.json` handles the monorepo build). Add all five web env vars. Vercel auto-deploys on push to `main`.
 
-### Worker (Railway)
-
-1. Log in to [Railway](https://railway.app) → **New Project** → **Deploy from GitHub repo**.
-2. Select this repository.
-3. **Settings → Root Directory**: set to `apps/worker`.
-4. **Settings → Environment Variables** — add:
-   - `SUPABASE_URL`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-   - `POLL_INTERVAL_MS` (recommended: `300000`)
-5. **Settings → Build Command**: `npm install && npm run build`
-6. **Settings → Start Command**: `npm run start`
-7. Click **Deploy**. In the **Logs** tab you should see `[worker] Starting.` followed by `[poll]` lines every 5 minutes.
-
-### Web (Vercel)
-
-1. Log in to [Vercel](https://vercel.com) → **Add New → Project** → **Import from GitHub**.
-2. Select this repository.
-3. **Framework Preset**: Next.js (auto-detected).
-4. **Root Directory**: leave as the repository root (the `vercel.json` at the root handles the monorepo build).
-5. **Environment Variables** — add:
-   - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
-   - `CLERK_SECRET_KEY`
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-6. Click **Deploy**.
-7. Once deployed, copy the production URL (e.g. `https://your-app.vercel.app`) and:
-   - **Clerk Dashboard → Domains**: add the Vercel URL to allowed origins.
-   - **Supabase Dashboard → Authentication → URL Configuration**: add the Vercel URL to the allowed redirect URLs.
+**Worker (Railway):** Import the repo, set Root Directory to `apps/worker`. Add `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `POLL_INTERVAL_MS`. Build command: `npm install && npm run build`. Start command: `node dist/index.js`. Check Logs for `[worker] Starting.` and periodic `[poll]` lines.
