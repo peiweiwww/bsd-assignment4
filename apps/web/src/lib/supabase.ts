@@ -31,3 +31,20 @@ export async function createServerSupabaseClient() {
     auth: { persistSession: false },
   })
 }
+
+/**
+ * ⚠️  SERVICE ROLE CLIENT — bypasses RLS entirely.
+ * Use ONLY for trusted server-side writes that must skip row-level security
+ * (e.g. inserting weather_readings from a Server Action or worker).
+ * Never import this in Client Components or expose it to the browser.
+ */
+export function createServiceRoleSupabaseClient() {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!serviceRoleKey) {
+    throw new Error('Missing env var: SUPABASE_SERVICE_ROLE_KEY must be set.')
+  }
+
+  return createClient(SUPABASE_URL!, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+}

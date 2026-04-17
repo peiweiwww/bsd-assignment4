@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { auth } from '@clerk/nextjs/server'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { createServerSupabaseClient, createServiceRoleSupabaseClient } from '@/lib/supabase'
 import type { City } from '@weather/shared'
 
 const USER_AGENT = 'weather-dashboard/1.0 (https://github.com/peiweiwww/bsd-assignment4)'
@@ -55,7 +55,7 @@ async function fetchAndInsertInitialReading(
     const json = (await res.json()) as OpenMeteoCurrentResponse
     const { temperature_2m, relative_humidity_2m, wind_speed_10m, weather_code } = json.current
 
-    const supabase = await createServerSupabaseClient()
+    const supabase = createServiceRoleSupabaseClient()
     const { error } = await supabase.from('weather_readings').insert({
       city_id: cityId,
       temperature: temperature_2m,
