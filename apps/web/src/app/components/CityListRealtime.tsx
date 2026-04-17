@@ -6,6 +6,7 @@ import { createBrowserSupabaseClient } from '@/lib/supabase-browser'
 import DeleteCityButton from '@/app/components/DeleteCityButton'
 import { weatherCodeToLabel } from '@weather/shared'
 import type { City, WeatherReading } from '@weather/shared'
+import { useUnit, formatTemp } from '@/app/contexts/UnitContext'
 
 // ── Weather helpers ────────────────────────────────────────────────────────────
 
@@ -46,6 +47,7 @@ export default function CityListRealtime({ cities, initialReadings }: Props) {
   const [readings, setReadings] = useState<Record<string, WeatherReading>>(initialReadings)
   const [, setTick] = useState(0)
   const { getToken } = useAuth()
+  const { unit } = useUnit()
 
   const supabaseRef = useRef<ReturnType<typeof createBrowserSupabaseClient> | null>(null)
   const channelRef = useRef<ReturnType<ReturnType<typeof createBrowserSupabaseClient>['channel']> | null>(null)
@@ -184,7 +186,7 @@ export default function CityListRealtime({ cities, initialReadings }: Props) {
                       {weatherCodeToEmoji(reading.weather_code)}
                     </span>
                     <p className="text-3xl font-semibold text-gray-900 leading-none">
-                      {reading.temperature.toFixed(1)}°C
+                      {formatTemp(reading.temperature, unit)}
                     </p>
                   </div>
                   <p className="text-sm text-gray-600 mt-2">
