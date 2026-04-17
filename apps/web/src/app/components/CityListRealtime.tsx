@@ -1,7 +1,5 @@
 'use client'
 
-// Note: token refresh on reconnect is not implemented; reload to reconnect if needed.
-
 import { useEffect, useState } from 'react'
 import { useAuth } from '@clerk/nextjs'
 import { createBrowserSupabaseClient } from '@/lib/supabase-browser'
@@ -23,6 +21,8 @@ function formatRelativeTime(recorded_at: string): string {
   return `${diffDay} day${diffDay === 1 ? '' : 's'} ago`
 }
 
+const ts = () => new Date().toISOString()
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -35,32 +35,27 @@ export default function CityListRealtime({ cities, initialReadings }: Props) {
   const [, setTick] = useState(0) // forces re-render every minute to update relative times
   const { getToken } = useAuth()
 
-  // ── Realtime subscription ──────────────────────────────────────────────────
+  // ── Realtime subscription with auto-reconnect ──────────────────────────────
   useEffect(() => {
-    // cancelled flag prevents async work completing after cleanup
+    console.log('[realtime]', ts(), 'effect fired')
+
     let cancelled = false
     let client: ReturnType<typeof createBrowserSupabaseClient> | null = null
-    let channel: ReturnType<ReturnType<typeof createBrowserSupabaseClient>['channel']> | null = null
+    // Track the active channel so cleanup can always remove it
+    let activeChannel: ReturnType<ReturnType<typeof createBrowserSupabaseClient>['channel']> | null = null
 
-    async function subscribe() {
-      const token = await getToken()
+    function setupChannel(retryCount: number) {
       if (cancelled) return
 
-      client = createBrowserSupabaseClient(token)
+      console.log('[realtime]', ts(), `subscribing to channel (attempt ${retryCount + 1}/4)`)
 
-      // Realtime WebSocket auth is separate from the REST Authorization header.
-      // Without setAuth(), Supabase silently rejects the channel join.
-      if (token) {
-        await client.realtime.setAuth(token)
-      }
-      if (cancelled) return
-
-      channel = client
-        .channel('weather-readings-changes')
+      const channel = client!
+        .channel(`weather-readings-changes-${retryCount}`)
         .on(
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'weather_readings' },
           (payload) => {
+            console.log('[realtime]', ts(), 'INSERT received:', payload)
             const r = payload.new as WeatherReading
             setReadings((prev) => {
               const existing = prev[r.city_id]
@@ -74,20 +69,54 @@ export default function CityListRealtime({ cities, initialReadings }: Props) {
             })
           }
         )
-        .subscribe((_status) => {
-          // status logged during development; remove callback if not needed
+        .subscribe((status) => {
+          console.log('[realtime]', ts(), 'subscription status:', status)
+
+          if (
+            (status === 'CLOSED' || status === 'CHANNEL_ERROR') &&
+            retryCount < 3 &&
+            !cancelled
+          ) {
+            console.log('[realtime]', ts(), `status ${status} — scheduling reconnect in 5s (retry ${retryCount + 1}/3)`)
+            setTimeout(() => {
+              if (cancelled) return
+              client!.removeChannel(channel)
+              setupChannel(retryCount + 1)
+            }, 5000)
+          }
         })
+
+      activeChannel = channel
+    }
+
+    async function subscribe() {
+      const token = await getToken()
+      console.log('[realtime]', ts(), 'token:', token ? 'got token' : 'no token')
+      if (cancelled) return
+
+      console.log('[realtime]', ts(), 'creating supabase client')
+      client = createBrowserSupabaseClient(token)
+
+      // Realtime WebSocket auth is separate from the REST Authorization header.
+      // Without setAuth(), Supabase silently rejects the channel join.
+      if (token) {
+        await client.realtime.setAuth(token)
+      }
+      if (cancelled) return
+
+      setupChannel(0)
     }
 
     subscribe()
 
     return () => {
       cancelled = true
-      if (channel && client) {
-        client.removeChannel(channel)
+      if (activeChannel && client) {
+        console.log('[realtime]', ts(), 'cleaning up channel')
+        client.removeChannel(activeChannel)
       }
     }
-  }, []) // subscribe once on mount — getToken is captured from the initial closure
+  }, []) // subscribe once on mount — getToken captured from initial closure
 
   // ── Minute ticker — keeps relative timestamps fresh ────────────────────────
   useEffect(() => {
