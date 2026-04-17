@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: 'Weather Dashboard',
+  description: 'Real-time weather for your favorite cities',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

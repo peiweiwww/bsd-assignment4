@@ -7,7 +7,19 @@ import DeleteCityButton from '@/app/components/DeleteCityButton'
 import { weatherCodeToLabel } from '@weather/shared'
 import type { City, WeatherReading } from '@weather/shared'
 
-// ── Relative time helper ───────────────────────────────────────────────────────
+// ── Weather helpers ────────────────────────────────────────────────────────────
+
+function weatherCodeToEmoji(code: number): string {
+  if (code === 0)                                    return '☀️'
+  if (code === 1 || code === 2)                      return '🌤️'
+  if (code === 3)                                    return '☁️'
+  if (code === 45 || code === 48)                    return '🌫️'
+  if ([51,53,55,56,57].includes(code))               return '🌦️'
+  if ([61,63,65,66,67,80,81,82].includes(code))      return '🌧️'
+  if ([71,73,75,77,85,86].includes(code))            return '🌨️'
+  if ([95,96,99].includes(code))                     return '⛈️'
+  return '🌡️'
+}
 
 function formatRelativeTime(recorded_at: string): string {
   const diffMs = Date.now() - new Date(recorded_at).getTime()
@@ -35,9 +47,7 @@ export default function CityListRealtime({ cities, initialReadings }: Props) {
   const [, setTick] = useState(0)
   const { getToken } = useAuth()
 
-  // Stable ref to the supabase client — created once, token refreshed in-place
   const supabaseRef = useRef<ReturnType<typeof createBrowserSupabaseClient> | null>(null)
-  // Ref to the active channel so cleanup and token-refresh can always reach it
   const channelRef = useRef<ReturnType<ReturnType<typeof createBrowserSupabaseClient>['channel']> | null>(null)
 
   // ── Realtime subscription with per-attempt token refresh ──────────────────
@@ -45,14 +55,12 @@ export default function CityListRealtime({ cities, initialReadings }: Props) {
     console.log('[realtime]', ts(), 'effect fired')
 
     let cancelled = false
-    // Track any pending reconnect setTimeout so we can cancel it on unmount
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
     let refreshInterval: ReturnType<typeof setInterval> | null = null
 
     async function setupChannel(retryCount: number) {
       if (cancelled) return
 
-      // Re-fetch token on every (re)connect attempt — Clerk tokens expire ~60s
       const token = await getToken()
       console.log('[realtime]', ts(), `token: ${token ? 'got token' : 'no token'} (attempt ${retryCount + 1})`)
 
@@ -62,14 +70,12 @@ export default function CityListRealtime({ cities, initialReadings }: Props) {
       }
       if (cancelled) return
 
-      // Create client once; subsequent calls just update auth
       if (!supabaseRef.current) {
         console.log('[realtime]', ts(), 'creating supabase client')
         supabaseRef.current = createBrowserSupabaseClient(token)
       }
       const supabase = supabaseRef.current
 
-      // Always set auth before subscribing so this attempt uses a fresh token
       await supabase.realtime.setAuth(token)
       if (cancelled) return
 
@@ -104,7 +110,7 @@ export default function CityListRealtime({ cities, initialReadings }: Props) {
               if (cancelled) return
               supabase.removeChannel(channel)
               channelRef.current = null
-              setupChannel(retryCount + 1) // recursive — getToken() called fresh each time
+              setupChannel(retryCount + 1)
             }, 5000)
           }
         })
@@ -112,9 +118,6 @@ export default function CityListRealtime({ cities, initialReadings }: Props) {
       channelRef.current = channel
     }
 
-    // ── Proactive token refresh every 50s ──────────────────────────────────
-    // Clerk session tokens expire ~60s. Re-authing before expiry prevents
-    // CLOSED from ever being triggered by a stale token.
     refreshInterval = setInterval(async () => {
       if (cancelled || !supabaseRef.current) return
       const newToken = await getToken()
@@ -124,7 +127,6 @@ export default function CityListRealtime({ cities, initialReadings }: Props) {
       }
     }, 50_000)
 
-    // Kick off initial subscription
     setupChannel(0)
 
     return () => {
@@ -139,7 +141,7 @@ export default function CityListRealtime({ cities, initialReadings }: Props) {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Minute ticker — keeps relative timestamps fresh ────────────────────────
+  // ── Minute ticker ──────────────────────────────────────────────────────────
   useEffect(() => {
     const id = setInterval(() => setTick((c) => c + 1), 60_000)
     return () => clearInterval(id)
@@ -162,22 +164,30 @@ export default function CityListRealtime({ cities, initialReadings }: Props) {
         return (
           <li
             key={city.id}
-            className="flex items-start justify-between border border-gray-200
-                       rounded-lg p-4 bg-white hover:border-gray-300 hover:shadow-sm
-                       transition-all"
+            className="flex items-start justify-between
+                       bg-white/70 backdrop-blur-sm
+                       border border-white/60
+                       rounded-2xl p-4
+                       shadow-sm hover:shadow-md transition-shadow"
           >
+            {/* Left: city + weather */}
             <div className="flex-1 min-w-0">
-              <p className="font-medium text-gray-800">{city.name}</p>
+              <p className="font-semibold text-gray-800">{city.name}</p>
               <p className="text-xs text-gray-400 mt-0.5 mb-3">
                 {city.latitude.toFixed(4)}, {city.longitude.toFixed(4)}
               </p>
 
               {reading ? (
                 <div>
-                  <p className="text-3xl font-semibold text-gray-900 leading-none">
-                    {reading.temperature.toFixed(1)}°C
-                  </p>
-                  <p className="text-sm text-gray-600 mt-1">
+                  <div className="flex items-center gap-3">
+                    <span className="text-5xl leading-none" role="img" aria-label={weatherCodeToLabel(reading.weather_code)}>
+                      {weatherCodeToEmoji(reading.weather_code)}
+                    </span>
+                    <p className="text-3xl font-semibold text-gray-900 leading-none">
+                      {reading.temperature.toFixed(1)}°C
+                    </p>
+                  </div>
+                  <p className="text-sm text-gray-600 mt-2">
                     {weatherCodeToLabel(reading.weather_code)}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
@@ -196,6 +206,7 @@ export default function CityListRealtime({ cities, initialReadings }: Props) {
               )}
             </div>
 
+            {/* Right: delete */}
             <div className="ml-4 shrink-0 self-start">
               <DeleteCityButton cityId={city.id} />
             </div>
